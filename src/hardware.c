@@ -160,6 +160,13 @@ typedef struct {
     const uint32_t delay_time;
 } fw_settlement_entry_t;
 
+#if(FW_AUTO_DETECTION == TRUE)
+/* AMPAK FW auto detection table */
+typedef struct {
+    char *chip_id;
+    char *updated_chip_id;
+} fw_auto_detection_entry_t;
+#endif
 
 /******************************************************************************
 **  Externs
@@ -234,7 +241,7 @@ static uint8_t bt_sco_i2spcm_param[SCO_I2SPCM_PARAM_SIZE] =
 static const fw_settlement_entry_t fw_settlement_table[] = {
     {"BCM43241", 200},
     {"BCM43341", 100},
-    {(const char *) NULL, 100}  // Giving the generic fw settlement delay setting.
+    {(const char *) NULL, 200}  // Giving the generic fw settlement delay setting.
 };
 
 
@@ -256,6 +263,27 @@ static uint8_t sco_bus_interface = SCO_INTERFACE_PCM;
 #define INVALID_SCO_CLOCK_RATE  0xFF
 static uint8_t sco_bus_clock_rate = INVALID_SCO_CLOCK_RATE;
 static uint8_t sco_bus_wbs_clock_rate = INVALID_SCO_CLOCK_RATE;
+
+#if(FW_AUTO_DETECTION == TRUE)
+#define FW_TABLE_VERSION "v1.1 20161117"
+static const fw_auto_detection_entry_t fw_auto_detection_table[] = {
+    {"4343A0","BCM43438A0"},    //AP6212
+    {"BCM43430A1","BCM43438A1"}, //AP6212A
+    {"BCM20702A","BCM20710A1"}, //AP6210B
+    {"BCM4335C0","BCM4339A0"}, //AP6335
+    {"BCM4330B1","BCM40183B2"}, //AP6330
+    {"BCM4324B3","BCM43241B4"}, //AP62X2
+    {"BCM4350C0","BCM4354A1"}, //AP6354
+    {"BCM4354A2","BCM4356A2"}, //AP6356
+    {"BCM4345C0","BCM4345C0"}, //AP6255
+//    {"BCM43341B0","BCM43341B0"}, //AP6234
+//    {"BCM2076B1","BCM2076B1"}, //AP6476
+	{"BCM43430B0","BCM4343B0"}, //AP6236
+	{"BCM4359C0","BCM4359C0"},	//AP6359
+	{"BCM4349B1","BCM4359B1"},	//AP6359
+    {NULL, NULL}
+};
+#endif
 
 /******************************************************************************
 **  Static functions
@@ -365,6 +393,8 @@ uint8_t line_speed_to_userial_baud(uint32_t line_speed)
         baud = USERIAL_BAUD_3M;
     else if (line_speed == 2000000)
         baud = USERIAL_BAUD_2M;
+    else if (line_speed == 1500000)
+        baud = USERIAL_BAUD_1_5M;
     else if (line_speed == 1000000)
         baud = USERIAL_BAUD_1M;
     else if (line_speed == 921600)
@@ -438,6 +468,9 @@ static uint8_t hw_config_findpatch(char *p_chip_id_str)
     struct dirent *dp;
     int filenamelen;
     uint8_t retval = FALSE;
+#if(FW_AUTO_DETECTION == TRUE)
+    fw_auto_detection_entry_t *p_entry;
+#endif
 
     BTHWDBG("Target name = [%s]", p_chip_id_str);
 
@@ -458,6 +491,21 @@ static uint8_t hw_config_findpatch(char *p_chip_id_str)
         ALOGI("FW patchfile: %s", p_chip_id_str);
         return TRUE;
     }
+
+#if(FW_AUTO_DETECTION == TRUE)
+    BTHWDBG("###AMPAK FW Auto detection patch version = [%s]###", FW_TABLE_VERSION);
+    p_entry = (fw_auto_detection_entry_t *)fw_auto_detection_table;
+    while (p_entry->chip_id != NULL)
+    {
+        if (strstr(p_chip_id_str, p_entry->chip_id)!=NULL)
+        {
+            strcpy(p_chip_id_str,p_entry->updated_chip_id);
+            break;
+        }
+        p_entry++;
+    }
+    BTHWDBG("Updated Target name = [%s]", p_chip_id_str);
+#endif
 
     if ((dirp = opendir(fw_patchfile_path)) != NULL)
     {
@@ -606,6 +654,97 @@ static uint8_t hw_config_read_bdaddr(HC_BT_HDR *p_buf)
     return (retval);
 }
 #endif // (USE_CONTROLLER_BDADDR == TRUE)
+
+typedef void (*tTIMER_HANDLE_CBACK)(union sigval sigval_value);
+
+static timer_t OsAllocateTimer(tTIMER_HANDLE_CBACK timer_callback)
+{
+    struct sigevent sigev;
+    timer_t timerid;
+
+    memset(&sigev, 0, sizeof(struct sigevent));
+    // Create the POSIX timer to generate signo
+    sigev.sigev_notify = SIGEV_THREAD;
+    //sigev.sigev_notify_thread_id = syscall(__NR_gettid);
+    sigev.sigev_notify_function = timer_callback;
+    sigev.sigev_value.sival_ptr = &timerid;
+
+    //Create the Timer using timer_create signal
+
+    if (timer_create(CLOCK_REALTIME, &sigev, &timerid) == 0)
+    {
+        return timerid;
+    }
+    else
+    {
+        ALOGE("timer_create error!");
+        return (timer_t)-1;
+    }
+}
+
+int OsFreeTimer(timer_t timerid)
+{
+    int ret = 0;
+    ret = timer_delete(timerid);
+    if(ret != 0)
+        ALOGE("timer_delete fail with errno(%d)", errno);
+
+    return ret;
+}
+
+
+static int OsStartTimer(timer_t timerid, int msec, int mode)
+{
+    struct itimerspec itval;
+
+    itval.it_value.tv_sec = msec / 1000;
+    itval.it_value.tv_nsec = (long)(msec % 1000) * (1000000L);
+
+    if (mode == 1)
+
+    {
+        itval.it_interval.tv_sec    = itval.it_value.tv_sec;
+        itval.it_interval.tv_nsec = itval.it_value.tv_nsec;
+    }
+    else
+    {
+        itval.it_interval.tv_sec = 0;
+        itval.it_interval.tv_nsec = 0;
+    }
+
+    //Set the Timer when to expire through timer_settime
+
+    if (timer_settime(timerid, 0, &itval, NULL) != 0)
+    {
+        ALOGE("time_settime error!");
+        return -1;
+    }
+
+    return 0;
+
+}
+
+static int OsStopTimer(timer_t timerid)
+{
+    return OsStartTimer(timerid, 0, 0);
+}
+
+
+static timer_t localtimer = 0;
+
+static void local_timer_handler(union sigval sigev_value)
+{
+    bt_vendor_cbacks->fwcfg_cb(BT_VND_OP_RESULT_SUCCESS);
+    OsFreeTimer(localtimer);
+}
+static void start_fwcfg_cbtimer()
+{
+    if(localtimer == 0)
+        localtimer = OsAllocateTimer(local_timer_handler);
+    OsStartTimer(localtimer, 40, 0);
+}
+
+void hw_sco_config(void);
 
 /*******************************************************************************
 **
@@ -874,7 +1013,9 @@ void hw_config_cback(void *p_mem)
 
                 ALOGI("vendor lib fwcfg completed");
                 bt_vendor_cbacks->dealloc(p_buf);
-                bt_vendor_cbacks->fwcfg_cb(BT_VND_OP_RESULT_SUCCESS);
+                //bt_vendor_cbacks->fwcfg_cb(BT_VND_OP_RESULT_SUCCESS);
+                hw_sco_config();
+                start_fwcfg_cbtimer();
 
                 hw_cfg_cb.state = 0;
 
@@ -1302,7 +1443,8 @@ void hw_sco_config(void)
 
     if (SCO_INTERFACE_I2S == sco_bus_interface) {
         hw_sco_i2spcm_config(SCO_CODEC_CVSD);
-    }
+    }else
+        hw_sco_i2spcm_config(SCO_CODEC_NONE);
 
     if (bt_vendor_cbacks)
     {

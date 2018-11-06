@@ -51,7 +51,7 @@
 
 /* Run-time configuration file */
 #ifndef VENDOR_LIB_CONF_FILE
-#define VENDOR_LIB_CONF_FILE "/etc/bluetooth/bt_vendor.conf"
+#define VENDOR_LIB_CONF_FILE "/vendor/etc/bluetooth/bt_vendor.conf"
 #endif
 
 /* Device port name where Bluetooth controller attached */
@@ -80,6 +80,14 @@
  */
 #ifndef FW_PATCH_SETTLEMENT_DELAY_MS
 #define FW_PATCH_SETTLEMENT_DELAY_MS          0
+#endif
+
+#ifndef USERIAL_VENDOR_SET_BAUD_DELAY_US
+#define USERIAL_VENDOR_SET_BAUD_DELAY_US	0
+#endif
+
+#ifndef FW_AUTO_DETECTION
+#define FW_AUTO_DETECTION	FALSE
 #endif
 
 /* The Bluetooth Device Aaddress source switch:

@@ -95,6 +95,8 @@ uint8_t userial_to_tcio_baud(uint8_t cfg_baud, uint32_t *baud)
         *baud = B3000000;
     else if (cfg_baud == USERIAL_BAUD_2M)
         *baud = B2000000;
+    else if (cfg_baud == USERIAL_BAUD_1_5M)
+        *baud = B1500000;
     else if (cfg_baud == USERIAL_BAUD_1M)
         *baud = B1000000;
     else if (cfg_baud == USERIAL_BAUD_921600)
@@ -316,6 +318,10 @@ void userial_vendor_close(void)
 void userial_vendor_set_baud(uint8_t userial_baud)
 {
     uint32_t tcio_baud;
+
+    if(USERIAL_VENDOR_SET_BAUD_DELAY_US > 0) {
+	usleep(USERIAL_VENDOR_SET_BAUD_DELAY_US);
+    }
 
     userial_to_tcio_baud(userial_baud, &tcio_baud);
 

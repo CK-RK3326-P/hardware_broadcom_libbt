@@ -76,4 +76,6 @@ ifeq ($(TARGET_PRODUCT), full_wingray)
     include $(LOCAL_PATH)/conf/moto/wingray/Android.mk
 endif
 
+    include $(LOCAL_PATH)/conf/rockchip/rksdk/Android.mk
+
 endif # BOARD_HAVE_BLUETOOTH_BCM
