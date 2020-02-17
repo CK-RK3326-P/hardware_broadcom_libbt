@@ -114,7 +114,7 @@
     1: UART with Host wake/BT wake out of band signals
 */
 #ifndef LPM_SLEEP_MODE
-#define LPM_SLEEP_MODE                  1
+#define LPM_SLEEP_MODE                  0
 #endif
 
 /* Host Stack Idle Threshold in 300ms or 25ms 
